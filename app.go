@@ -26,7 +26,29 @@ func (app *KVStoreApplication) Info(info abcitypes.RequestInfo) abcitypes.Respon
 }
 
 func (app *KVStoreApplication) Query(query abcitypes.RequestQuery) abcitypes.ResponseQuery {
-	return abcitypes.ResponseQuery{}
+	resp := abcitypes.ResponseQuery{Key: query.Data}
+
+	dbErr := app.db.View(func(txn *badger.Txn) error {
+		item, err := txn.Get(query.Data)
+		if err != nil {
+			if err != badger.ErrKeyNotFound {
+				return err
+			}
+			resp.Log = "key does not exist"
+			return nil
+		}
+
+		return item.Value(func(val []byte) error {
+			resp.Log = "exists"
+			resp.Value = val
+			return nil
+		})
+	})
+
+	if dbErr != nil {
+		log.Panicf("Error reading database, unable to execute query: %v", dbErr)
+	}
+	return resp
 }
 
 func (app *KVStoreApplication) CheckTx(tx abcitypes.RequestCheckTx) abcitypes.ResponseCheckTx {
@@ -40,12 +62,13 @@ func (app *KVStoreApplication) InitChain(chain abcitypes.RequestInitChain) abcit
 	return abcitypes.ResponseInitChain{}
 }
 
+// give app more control over the construction and processing of transaction blockss
 func (app *KVStoreApplication) PrepareProposal(proposal abcitypes.RequestPrepareProposal) abcitypes.ResponsePrepareProposal {
-	return abcitypes.ResponsePrepareProposal{}
+	return abcitypes.ResponsePrepareProposal{Txs: proposal.Txs}
 }
 
 func (app *KVStoreApplication) ProcessProposal(proposal abcitypes.RequestProcessProposal) abcitypes.ResponseProcessProposal {
-	return abcitypes.ResponseProcessProposal{}
+	return abcitypes.ResponseProcessProposal{Status: abcitypes.ResponseProcessProposal_ACCEPT}
 }
 
 // is called once to indicate that the application is about to receive a block
