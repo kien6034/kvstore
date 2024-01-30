@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+
 	abcitypes "github.com/cometbft/cometbft/abci/types"
 	"github.com/dgraph-io/badger/v3"
 )
@@ -27,7 +29,10 @@ func (app *KVStoreApplication) Query(query abcitypes.RequestQuery) abcitypes.Res
 }
 
 func (app *KVStoreApplication) CheckTx(tx abcitypes.RequestCheckTx) abcitypes.ResponseCheckTx {
-	return abcitypes.ResponseCheckTx{}
+	code := app.isValid(tx.Tx)
+
+	// any response code other than 0 is considered a failure
+	return abcitypes.ResponseCheckTx{Code: code}
 }
 
 func (app *KVStoreApplication) InitChain(chain abcitypes.RequestInitChain) abcitypes.ResponseInitChain {
@@ -72,4 +77,15 @@ func (app *KVStoreApplication) LoadSnapshotChunk(chunk abcitypes.RequestLoadSnap
 
 func (app *KVStoreApplication) ApplySnapshotChunk(chunk abcitypes.RequestApplySnapshotChunk) abcitypes.ResponseApplySnapshotChunk {
 	return abcitypes.ResponseApplySnapshotChunk{}
+}
+
+func (app *KVStoreApplication) isValid(tx []byte) uint32 {
+	// transaction is a string of with the form key=value.
+	// most basic checks is to check if the tx conforms to the key=value
+	parts := bytes.Split(tx, []byte("="))
+	if len(parts) != 2 {
+		return 1
+	}
+
+	return 0
 }
