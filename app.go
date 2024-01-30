@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"log"
 
 	abcitypes "github.com/cometbft/cometbft/abci/types"
 	"github.com/dgraph-io/badger/v3"
@@ -47,20 +48,41 @@ func (app *KVStoreApplication) ProcessProposal(proposal abcitypes.RequestProcess
 	return abcitypes.ResponseProcessProposal{}
 }
 
+// is called once to indicate that the application is about to receive a block
 func (app *KVStoreApplication) BeginBlock(block abcitypes.RequestBeginBlock) abcitypes.ResponseBeginBlock {
+	// create a new Badger transaction. All application transactions in the current block will be executed under this badger tx
+	app.onGoingBlock = app.db.NewTransaction(true)
 	return abcitypes.ResponseBeginBlock{}
 }
 
+// add key/value to the database transaction everytime the app receives a new application transaction
 func (app *KVStoreApplication) DeliverTx(tx abcitypes.RequestDeliverTx) abcitypes.ResponseDeliverTx {
-	return abcitypes.ResponseDeliverTx{}
+	// validate against, since it is not guranteed that the tx valid if transaction state is used to determine transaction validity
+	if code := app.isValid(tx.Tx); code != 0 {
+		return abcitypes.ResponseDeliverTx{Code: code}
+	}
+
+	parts := bytes.SplitN(tx.Tx, []byte("="), 2)
+	key, value := parts[0], parts[1]
+
+	if err := app.onGoingBlock.Set(key, value); err != nil {
+		log.Panicf("Error writing to database, unable to execute tx: %v", err)
+	}
+
+	return abcitypes.ResponseDeliverTx{Code: 0}
 }
 
+// is to inform the app that full block has been delivered, and give the application the chance to do additonal processing before commit the state
 func (app *KVStoreApplication) EndBlock(block abcitypes.RequestEndBlock) abcitypes.ResponseEndBlock {
 	return abcitypes.ResponseEndBlock{}
 }
 
+// make permanent changes to the application state
 func (app *KVStoreApplication) Commit() abcitypes.ResponseCommit {
-	return abcitypes.ResponseCommit{}
+	if err := app.onGoingBlock.Commit(); err != nil {
+		log.Panicf("Error writing to database, unable to commit block: %v", err)
+	}
+	return abcitypes.ResponseCommit{Data: []byte{}}
 }
 
 func (app *KVStoreApplication) ListSnapshots(snapshots abcitypes.RequestListSnapshots) abcitypes.ResponseListSnapshots {
