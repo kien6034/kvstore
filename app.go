@@ -2,14 +2,20 @@ package main
 
 import (
 	abcitypes "github.com/cometbft/cometbft/abci/types"
+	"github.com/dgraph-io/badger/v3"
 )
 
-type KVStoreApplication struct{}
+type KVStoreApplication struct {
+	db           *badger.DB
+	onGoingBlock *badger.Txn
+}
 
 var _ abcitypes.Application = (*KVStoreApplication)(nil)
 
-func NewKVStoreApplication() *KVStoreApplication {
-	return &KVStoreApplication{}
+func NewKVStoreApplication(db *badger.DB) *KVStoreApplication {
+	return &KVStoreApplication{
+		db: db,
+	}
 }
 
 func (app *KVStoreApplication) Info(info abcitypes.RequestInfo) abcitypes.ResponseInfo {
